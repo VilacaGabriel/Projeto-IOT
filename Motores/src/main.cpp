@@ -7,64 +7,84 @@
 #define IN3_M1  18
 #define IN4_M1  19
 
-// ==== MOTOR 2 ====
-#define IN1_M2  21
-#define IN2_M2  22
-#define IN3_M2  23
-#define IN4_M2  25
-
-// Tipo de driver: 4 pinos
 AccelStepper motor1(AccelStepper::FULL4WIRE, IN1_M1, IN3_M1, IN2_M1, IN4_M1);
-AccelStepper motor2(AccelStepper::FULL4WIRE, IN1_M2, IN3_M2, IN2_M2, IN4_M2);
 
-bool motor1Ligado = false;
-bool motor2Ligado = false;
+const long stepsPerRevolution = 2048; // ajuste se necessário
+const int testMaxSpeed = 1000;        // velocidade alvo (passos/s) durante os testes
+const unsigned long noProgressTimeout = 700; // ms sem progresso => assume travamento
+const unsigned long pauseBetweenTests = 2000; // ms entre testes
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("Controle de motores iniciado!");
-  Serial.println("Comandos:");
-  Serial.println("  M1 ON  -> ligar motor 1");
-  Serial.println("  M1 OFF -> parar motor 1");
-  Serial.println("  M2 ON  -> ligar motor 2");
-  Serial.println("  M2 OFF -> parar motor 2");
+  while (!Serial) { delay(1); }
+  Serial.println();
+  Serial.println("=== TESTE DE ACELERACAO ===");
+  Serial.print("Velocidade alvo (maxSpeed): ");
+  Serial.print(testMaxSpeed);
+  Serial.println(" passos/s");
+  Serial.println();
 
-  motor1.setMaxSpeed(1000);
-  motor1.setAcceleration(300);
+  motor1.setMaxSpeed(testMaxSpeed);
 
-  motor2.setMaxSpeed(1000);
-  motor2.setAcceleration(300);
+  // Loop de testes de aceleração: aumenta e testa até encontrar limite
+  for (int accel = 100; accel <= 4000; accel += 100) {
+    Serial.println("----------------------------------------");
+    Serial.print("Testando aceleração = ");
+    Serial.print(accel);
+    Serial.println(" passos/s^2");
+
+    motor1.setAcceleration(accel);
+    motor1.moveTo(motor1.currentPosition() + stepsPerRevolution);
+
+    unsigned long startTime = millis();
+    unsigned long lastProgressTime = startTime;
+    long lastDistance = motor1.distanceToGo();
+    bool stalled = false;
+
+    // Executa movimento até completar ou detectar travamento
+    while (motor1.distanceToGo() != 0) {
+      motor1.run();
+
+      // Detecta mudança na distância restante
+      long dist = motor1.distanceToGo();
+      if (dist != lastDistance) {
+        lastDistance = dist;
+        lastProgressTime = millis();
+      } else {
+        // sem progresso
+        if (millis() - lastProgressTime > noProgressTimeout) {
+          stalled = true;
+          Serial.println("⚠️  Sem progresso detectado (possível travamento/pulo de passos). Abortando este teste.");
+          // Para o motor de forma segura
+          motor1.stop();
+          motor1.runToPosition(); // força atualização do posicionamento interno
+          break;
+        }
+      }
+    }
+
+    unsigned long elapsed = millis() - startTime;
+
+    if (!stalled) {
+      Serial.print("✅ Concluído em ");
+      Serial.print(elapsed / 1000.0, 3);
+      Serial.println(" s");
+      Serial.println("Sem travamento detectado.");
+    } else {
+      Serial.print("⛔ Teste falhou em aceleração = ");
+      Serial.print(accel);
+      Serial.println(" passos/s^2");
+    }
+
+    Serial.println("Aguardando antes do próximo teste...");
+    delay(pauseBetweenTests);
+  }
+
+  Serial.println();
+  Serial.println("🏁 Todos os testes de aceleração foram concluídos.");
+  Serial.println("Recomendações: escolha a maior aceleração que não travou repetidamente.");
 }
 
 void loop() {
-  // Verifica se há comando recebido pela serial
-  if (Serial.available()) {
-    String cmd = Serial.readStringUntil('\n');
-    cmd.trim();
-
-    if (cmd.equalsIgnoreCase("M1 ON")) {
-      motor1Ligado = true;
-      Serial.println("Motor 1 ligado (sentido horário)");
-    } else if (cmd.equalsIgnoreCase("M1 OFF")) {
-      motor1Ligado = false;
-      Serial.println("Motor 1 parado");
-    } else if (cmd.equalsIgnoreCase("M2 ON")) {
-      motor2Ligado = true;
-      Serial.println("Motor 2 ligado (sentido horário)");
-    } else if (cmd.equalsIgnoreCase("M2 OFF")) {
-      motor2Ligado = false;
-      Serial.println("Motor 2 parado");
-    }
-  }
-
-  // Faz os motores girarem continuamente se estiverem ligados
-  if (motor1Ligado) {
-    motor1.setSpeed(500);  // Velocidade positiva = horário
-    motor1.runSpeed();
-  }
-
-  if (motor2Ligado) {
-    motor2.setSpeed(500);
-    motor2.runSpeed();
-  }
+  // Nenhuma ação contínua necessária — tudo é testado no setup()
 }

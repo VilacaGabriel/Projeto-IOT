@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Monitor de Câmera</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Monitoramento da Câmera</h1>
+    <div class="video-container">
+        <img src="{{ url_for('video') }}" width="640" height="480">
+    </div>
+</body>
+</html>
