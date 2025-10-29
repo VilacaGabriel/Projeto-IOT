@@ -1,14 +1,52 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <title>Monitor de Câmera</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="UTF-8">
+  <title>Monitor de Câmera e Controle</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <h1>Monitoramento da Câmera</h1>
-    <div class="video-container">
-        <img src="{{ url_for('video') }}" width="640" height="480">
+  <h1>Monitoramento da Câmera</h1>
+
+  <div class="video-container">
+    <img src="{{ url_for('video') }}" width="640" height="480">
+  </div>
+
+  <h2>Controle de Velocidade</h2>
+
+  <div class="controls">
+    <div class="motor-control">
+      <label for="motor1">Motor 1</label>
+      <input type="range" id="motor1" min="0" max="800" step="10" value="300" oninput="updateValue(1)">
+      <span id="val1">300</span>
+      <button onclick="setSpeed(1)">Aplicar</button>
     </div>
+
+    <div class="motor-control">
+      <label for="motor2">Motor 2</label>
+      <input type="range" id="motor2" min="0" max="800" step="10" value="300" oninput="updateValue(2)">
+      <span id="val2">300</span>
+      <button onclick="setSpeed(2)">Aplicar</button>
+    </div>
+  </div>
+
+  <script>
+    function updateValue(motor) {
+      document.getElementById("val" + motor).textContent =
+        document.getElementById("motor" + motor).value;
+    }
+
+    function setSpeed(motor) {
+      const valor = document.getElementById("motor" + motor).value;
+      fetch(`/velocidade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motor, valor })
+      })
+        .then(res => res.text())
+        .then(txt => alert(txt))
+        .catch(err => alert("Erro: " + err));
+    }
+  </script>
 </body>
 </html>

@@ -1,90 +1,136 @@
 #include <Arduino.h>
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
 #include <AccelStepper.h>
+#include <ArduinoJson.h>
 
-// ==== MOTOR 1 ====
-#define IN1_M1  16
-#define IN2_M1  17
-#define IN3_M1  18
-#define IN4_M1  19
+// ====== CONFIG WiFi ======
+const char* ssid = "Vilaca";
+const char* password = "13g11a96";
 
-AccelStepper motor1(AccelStepper::FULL4WIRE, IN1_M1, IN3_M1, IN2_M1, IN4_M1);
+// ====== Definições de pinos ======
 
-const long stepsPerRevolution = 2048; // ajuste se necessário
-const int testMaxSpeed = 1000;        // velocidade alvo (passos/s) durante os testes
-const unsigned long noProgressTimeout = 700; // ms sem progresso => assume travamento
-const unsigned long pauseBetweenTests = 2000; // ms entre testes
+// Motor 1 (ULN2003)
+#define M1_IN1 32
+#define M1_IN2 33
+#define M1_IN3 25
+#define M1_IN4 26
 
-void setup() {
-  Serial.begin(115200);
-  while (!Serial) { delay(1); }
-  Serial.println();
-  Serial.println("=== TESTE DE ACELERACAO ===");
-  Serial.print("Velocidade alvo (maxSpeed): ");
-  Serial.print(testMaxSpeed);
-  Serial.println(" passos/s");
-  Serial.println();
+// Motor 2 (ULN2003)
+#define M2_IN1 27
+#define M2_IN2 14
+#define M2_IN3 12
+#define M2_IN4 13
 
-  motor1.setMaxSpeed(testMaxSpeed);
+// ====== Objetos ======
+AccelStepper motor1(AccelStepper::HALF4WIRE, M1_IN1, M1_IN3, M1_IN2, M1_IN4);
+AccelStepper motor2(AccelStepper::HALF4WIRE, M2_IN1, M2_IN3, M2_IN2, M2_IN4);
+AsyncWebServer server(80);
 
-  // Loop de testes de aceleração: aumenta e testa até encontrar limite
-  for (int accel = 100; accel <= 4000; accel += 100) {
-    Serial.println("----------------------------------------");
-    Serial.print("Testando aceleração = ");
-    Serial.print(accel);
-    Serial.println(" passos/s^2");
+// ====== Variáveis de controle ======
+float velocidadeBase = 300;
+float ajusteMotor1 = 1.0;
+float ajusteMotor2 = 1.0;
+int direcao = 1;
+unsigned long ultimoTempo = 0;
 
-    motor1.setAcceleration(accel);
-    motor1.moveTo(motor1.currentPosition() + stepsPerRevolution);
-
-    unsigned long startTime = millis();
-    unsigned long lastProgressTime = startTime;
-    long lastDistance = motor1.distanceToGo();
-    bool stalled = false;
-
-    // Executa movimento até completar ou detectar travamento
-    while (motor1.distanceToGo() != 0) {
-      motor1.run();
-
-      // Detecta mudança na distância restante
-      long dist = motor1.distanceToGo();
-      if (dist != lastDistance) {
-        lastDistance = dist;
-        lastProgressTime = millis();
-      } else {
-        // sem progresso
-        if (millis() - lastProgressTime > noProgressTimeout) {
-          stalled = true;
-          Serial.println("⚠️  Sem progresso detectado (possível travamento/pulo de passos). Abortando este teste.");
-          // Para o motor de forma segura
-          motor1.stop();
-          motor1.runToPosition(); // força atualização do posicionamento interno
-          break;
-        }
-      }
-    }
-
-    unsigned long elapsed = millis() - startTime;
-
-    if (!stalled) {
-      Serial.print("✅ Concluído em ");
-      Serial.print(elapsed / 1000.0, 3);
-      Serial.println(" s");
-      Serial.println("Sem travamento detectado.");
-    } else {
-      Serial.print("⛔ Teste falhou em aceleração = ");
-      Serial.print(accel);
-      Serial.println(" passos/s^2");
-    }
-
-    Serial.println("Aguardando antes do próximo teste...");
-    delay(pauseBetweenTests);
-  }
-
-  Serial.println();
-  Serial.println("🏁 Todos os testes de aceleração foram concluídos.");
-  Serial.println("Recomendações: escolha a maior aceleração que não travou repetidamente.");
+// ====== Função para atualizar os motores ======
+void atualizarVelocidades() {
+  motor1.setSpeed(velocidadeBase * ajusteMotor1 * direcao);
+  motor2.setSpeed(velocidadeBase * ajusteMotor2 * direcao);
 }
 
+// ====== Setup ======
+void setup() {
+  Serial.begin(115200);
+  Serial.println("Iniciando WiFi...");
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWiFi conectado!");
+  Serial.print("Endereço IP: ");
+  Serial.println(WiFi.localIP());
+
+  motor1.setMaxSpeed(1000);
+  motor2.setMaxSpeed(1000);
+  atualizarVelocidades();
+
+  // ====== Rotas da API ======
+
+  // GET /status
+  server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String json = "{";
+    json += "\"velocidade\":" + String(velocidadeBase) + ",";
+    json += "\"direcao\":" + String(direcao) + ",";
+    json += "\"ajuste1\":" + String(ajusteMotor1) + ",";
+    json += "\"ajuste2\":" + String(ajusteMotor2);
+    json += "}";
+    request->send(200, "application/json", json);
+  });
+
+  // POST /velocidade?valor=400
+  server.on("/velocidade", HTTP_POST, [](AsyncWebServerRequest *request){}, NULL,
+  [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t) {
+    DynamicJsonDocument doc(200);
+    deserializeJson(doc, data);
+    int motor = doc["motor"];
+    float valor = doc["valor"];
+    
+    if (motor == 1) {
+      motor1.setSpeed(valor);
+    } else if (motor == 2) {
+      motor2.setSpeed(valor);
+    }
+
+    String msg = "Velocidade do motor " + String(motor) + " ajustada para " + String(valor);
+    request->send(200, "text/plain", msg);
+});
+
+  // POST /direcao?valor=-1
+  server.on("/direcao", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("valor")) {
+      direcao = request->getParam("valor")->value().toInt();
+      direcao = (direcao >= 0) ? 1 : -1;
+      atualizarVelocidades();
+      request->send(200, "text/plain", "Direção atualizada");
+    } else {
+      request->send(400, "text/plain", "Parâmetro 'valor' não encontrado");
+    }
+  });
+
+  // POST /ajuste?motor=1&valor=1.02
+  server.on("/ajuste", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("motor") && request->hasParam("valor")) {
+      int m = request->getParam("motor")->value().toInt();
+      float v = request->getParam("valor")->value().toFloat();
+
+      if (m == 1) ajusteMotor1 = v;
+      else if (m == 2) ajusteMotor2 = v;
+      else return request->send(400, "text/plain", "Motor inválido");
+
+      atualizarVelocidades();
+      request->send(200, "text/plain", "Ajuste atualizado");
+    } else {
+      request->send(400, "text/plain", "Parâmetros 'motor' e 'valor' obrigatórios");
+    }
+  });
+
+  // Inicia o servidor
+  server.begin();
+  Serial.println("Servidor iniciado!");
+}
+
+// ====== Loop ======
 void loop() {
-  // Nenhuma ação contínua necessária — tudo é testado no setup()
+  motor1.runSpeed();
+  motor2.runSpeed();
+
+  if (millis() - ultimoTempo > 1000) {
+    ultimoTempo = millis();
+    Serial.printf("Velocidade: %.1f | Direção: %d\n", velocidadeBase, direcao);
+  }
 }
