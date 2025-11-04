@@ -14,4 +14,4 @@ def video():
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True)
+    app.run(host='192.168.1.102', debug=True)

@@ -1,52 +1,124 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-  <meta charset="UTF-8">
-  <title>Monitor de Câmera e Controle</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <meta charset="UTF-8">
+    <title>Monitor de Câmera e Controle</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <h1>Monitoramento da Câmera</h1>
+    <nav class="menu">
+        <ul>
+            <li class="lista-menu">
+                <a href="#">
+                    <img class="icones-menu" src="{{ url_for('static', filename='imgs/icon-home.png')}}" alt="Home"> 
+                    Home
+                </a>
+            </li>
+            <li class="lista-menu">
+                <a href="#">
+                 <img class="icones-menu" src="{{ url_for('static', filename='imgs/icon-registros.png')}}" alt="Home"> 
+                    Registros
+                </a>
+            </li>
+            <li class="lista-menu">
+                <a href="#">
+                    <img class="icones-menu" src="{{ url_for('static', filename='imgs/icon-configuracoes.png')}}" alt="Home"> 
+                    Configurações </br> avançadas
+                    <!-- TODO: 
+                        - definir ips de camera e esp32
+                        - ajuste de escala dos motores para sicronismo
+                        - ajuste de distancia dos sensores
+                        - limite maximo de velocidade dos motores
+                    -->
+                </a>
+            </li>
+        </ul>
+    </nav>
 
-  <div class="video-container">
-    <img src="{{ url_for('video') }}" width="640" height="480">
-  </div>
+    <div class="container-principal">
+        <div class="box controles">
+            <h1>Controles</h1>
+            <ul>
+                <li class="lista-controles">
+                    <div class="motor-control">
+                        <label for="velocidade_motores">Velocidade dos Motores</label>
+                        <input type="range" id="velocidade_motores" min="0" max="800" step="10" value="300" oninput="updateValue(1)">
+                        <span id="val1">300</span>
+                        <button onclick="setSpeed(1)">Aplicar</button>
+                    </div>
+                </li>
+                <li class="lista-controles">
+                    <div class="motor-control">
+                        <label for="intencidade_luzes">Intencidade Luzes</label>
+                        <input type="range" id="intencidade_luzes" min="0" max="800" step="10" value="300" oninput="updateValue(1)">
+                        <span id="val2">300</span>
+                        <button onclick="setSpeed(1)">Aplicar</button>
+                    </div>
+                </li>
 
-  <h2>Controle de Velocidade</h2>
+            </ul>
+        </div>
 
-  <div class="controls">
-    <div class="motor-control">
-      <label for="motor1">Motor 1</label>
-      <input type="range" id="motor1" min="0" max="800" step="10" value="300" oninput="updateValue(1)">
-      <span id="val1">300</span>
-      <button onclick="setSpeed(1)">Aplicar</button>
+        <div class="box video-container">
+            <h1>Monitoramento da Câmera</h1>
+            <img class="img-video" src="{{ url_for('video') }}" width="640" height="480">
+        </div>
+
+        <div class="box monitoramento">
+            <h1>Monitoramento de Componentes</h1>
+            <li class="lista-controles">
+                <div class="motor-control">
+                    <div class="motores">
+                        <div class="motor1">
+                            <h3>Motor 1</h3>
+                            <p>velocidade:</p>
+                            <img class="icones-menu icones-monitoramento" src="{{ url_for('static', filename='imgs/icon-bobina.png')}}" alt="">
+                            <p>Diametro da bobina:</p>
+                        </div>
+                        <div class="direcao">
+                            <h3>Direção</h3>
+                            <img class="icones-menu icones-monitoramento" src="{{ url_for('static', filename='imgs/icon-direcao.png')}}" alt="">
+
+                        </div>
+                        <div class="motor2">
+                            <h3>Motor 2</h3>
+                            <p>velocidade:</p>
+                            <img class="icones-menu icones-monitoramento espelhado" src="{{ url_for('static', filename='imgs/icon-bobina.png')}}" alt="">
+                            <p>Diametro da bobina:</p>
+                        </div>
+                    </div>
+                </div>
+            </li>
+            <li class="lista-controles">
+                <div class="motor-control">
+                    
+                </div>
+            </li>
+        </div>
+        <div class="box linha-tempo">
+            <!-- TODO: Talvez-->
+        </div>
+
+
     </div>
 
-    <div class="motor-control">
-      <label for="motor2">Motor 2</label>
-      <input type="range" id="motor2" min="0" max="800" step="10" value="300" oninput="updateValue(2)">
-      <span id="val2">300</span>
-      <button onclick="setSpeed(2)">Aplicar</button>
-    </div>
-  </div>
+    <script>
+        function updateValue(motor) {
+            document.getElementById("val" + motor).textContent =
+                document.getElementById("motor" + motor).value;
+        }
 
-  <script>
-    function updateValue(motor) {
-      document.getElementById("val" + motor).textContent =
-        document.getElementById("motor" + motor).value;
-    }
-
-    function setSpeed(motor) {
-      const valor = document.getElementById("motor" + motor).value;
-      fetch(`/velocidade`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ motor, valor })
-      })
-        .then(res => res.text())
-        .then(txt => alert(txt))
-        .catch(err => alert("Erro: " + err));
-    }
-  </script>
+        function setSpeed(motor) {
+            const valor = document.getElementById("motor" + motor).value;
+            fetch(`/velocidade`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ motor, valor })
+            })
+                .then(res => res.text())
+                .then(txt => alert(txt))
+                .catch(err => alert("Erro: " + err));
+        }
+    </script>
 </body>
 </html>
