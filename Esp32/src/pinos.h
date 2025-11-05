@@ -5,7 +5,7 @@
 #define CAM_TX 17 // TX2 
 
 // LED 
-#define LED_PIN 5 
+#define LED_PIN 2 
 
 // Motor 1 (ULN2003) 
 #define M1_IN1 32 

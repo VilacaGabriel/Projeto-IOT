@@ -88,7 +88,7 @@ uint16_t lerDistancia2() {
     return distancia2;
 }
 
-// ✅ ESTA FUNÇÃO ESTAVA FALTANDO!
+
 void atualizarDistancias() {
     if (!sensoresProntos) return; // só lê após inicializar
     lerDistancia1();

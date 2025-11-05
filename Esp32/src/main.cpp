@@ -6,6 +6,8 @@
 #include "controleMotores.h"
 #include "serverApi.h"
 #include "sensorDistancia.h"
+#include "pinos.h"
+#include "configGlobais.h"
 
 unsigned long ultimoTempo = 0;
 unsigned long ultimoTempoSensores = 0;
@@ -13,11 +15,13 @@ unsigned long ultimoTempoSensores = 0;
 // ====== Setup ======
 void setup() {
     Serial.begin(115200);
+    
+    setupLed(); // INICIA LED PWM
+    setupMotors(); // INICIA MOTORES
+    iniciarSensores(); // INICIA MÁQUINA DE ESTADOS DOS SENSORES
 
-    conectarWifi();      // INICIA WIFI
-    setupMotors();       // INICIA MOTORES
+    conectarWifi(); // INICIA WIFI
     setupApiEndpoints(); // INICIA API
-    iniciarSensores();   // INICIA MÁQUINA DE ESTADOS DOS SENSORES
 }
 
 // ====== Loop ======

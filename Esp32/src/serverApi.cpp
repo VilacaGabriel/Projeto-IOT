@@ -1,6 +1,7 @@
 #include "serverApi.h"
 #include "controleMotores.h"
 #include "sensorDistancia.h"
+#include "configGlobais.h"
 #include <ArduinoJson.h>
 
 AsyncWebServer server(80);
@@ -8,42 +9,50 @@ AsyncWebServer server(80);
 void setupApiEndpoints() {
 
     // =====================================================
-    // GET /status   → retorna TUDO do sistema
+    // GET /status   → retorna TUDO do sistema (completo)
     // =====================================================
     server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-
         JsonDocument doc;
 
-        doc["velocidadeBase"] = velocidadeBase;
-        doc["direcao"]        = direcao;
-        doc["ajusteMotor1"]   = ajusteMotor1;
-        doc["ajusteMotor2"]   = ajusteMotor2;
-        doc["distancia1"]     = distancia1;
-        doc["distancia2"]     = distancia2;
+        // ==== Motor 1 ====
+        doc["motor1"]["velocidade"] = motor1.speed();
+        doc["motor1"]["ajuste"]     = ajusteMotor1;
 
+        // ==== Motor 2 ====
+        doc["motor2"]["velocidade"] = motor2.speed();
+        doc["motor2"]["ajuste"]     = ajusteMotor2;
+
+        // ==== Controle geral ====
+        doc["controle"]["velocidadeBase"]  = velocidadeBase;
+        doc["controle"]["direcao"]         = direcao;
+        doc["controle"]["limiteVelocidade"] = limiteVelocidade;
+
+        // ==== Sensores ====
+        doc["sensores"]["pronto"]     = sensoresProntos;
+        doc["sensores"]["distancia1"] = distancia1;
+        doc["sensores"]["distancia2"] = distancia2;
+
+        // ==== LED ====
+        doc["luzes"]["brilho"] = brilhoLed;
+
+        // ---- Envio do JSON ----
         String json;
         serializeJson(doc, json);
         request->send(200, "application/json", json);
     });
 
-    // TODO: falta -limite de velocidade, - visualizar os sensores - claculo de velocidade para motores independentes, - intencidade das leds
-
     // =====================================================
-    // POST /config   → atualiza qualquer parâmetro
+    // POST /config   → atualiza qualquer parâmetro global
+    //
     // Exemplo JSON:
     // {
-    //   "velocidadeBase": 400,
-    //   "direcao": 1,
-    //   "ajusteMotor1": 1.02,
-    //   "ajusteMotor2": 0.98
+    //   "velocidadeBase": 500,
+    //   "direcao": -1,
+    //   "limiteVelocidade": 1200
     // }
-    //
-    // Obs: Apenas atualiza campos presentes no JSON
     // =====================================================
-
     server.on("/config", HTTP_POST, 
-        [](AsyncWebServerRequest *request){}, 
-        NULL,
+        [](AsyncWebServerRequest *request) {}, NULL,
         [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t) {
 
         JsonDocument doc;
@@ -54,7 +63,6 @@ void setupApiEndpoints() {
 
         bool alterou = false;
 
-        // Atualiza somente se houver no JSON
         if (doc["velocidadeBase"].is<float>()) {
             velocidadeBase = doc["velocidadeBase"];
             alterou = true;
@@ -62,17 +70,14 @@ void setupApiEndpoints() {
 
         if (doc["direcao"].is<int>()) {
             int d = doc["direcao"];
-            direcao = (d >= 0) ? 1 : -1;
+            direcao = (d >= 0 ? 1 : -1);
             alterou = true;
         }
 
-        if (doc["ajusteMotor1"].is<float>()) {
-            ajusteMotor1 = doc["ajusteMotor1"];
-            alterou = true;
-        }
-
-        if (doc["ajusteMotor2"].is<float>()) {
-            ajusteMotor2 = doc["ajusteMotor2"];
+        if (doc["limiteVelocidade"].is<float>()) {
+            limiteVelocidade = doc["limiteVelocidade"];
+            motor1.setMaxSpeed(limiteVelocidade);
+            motor2.setMaxSpeed(limiteVelocidade);
             alterou = true;
         }
 
@@ -85,8 +90,83 @@ void setupApiEndpoints() {
     });
 
     // =====================================================
+    // POST /motor  → alterar velocidade individual
+    // JSON:
+    //   { "motor": 1, "velocidade": 300 }
+    // =====================================================
+    server.on("/motor", HTTP_POST, 
+        [](AsyncWebServerRequest *request) {}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t) {
+
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len)) {
+            request->send(400, "text/plain", "JSON inválido");
+            return;
+        }
+
+        if (!doc["motor"].is<int>() || !doc["velocidade"].is<float>()) {
+            request->send(400, "text/plain", "JSON deve conter motor (1/2) e velocidade");
+            return;
+        }
+
+        int m = doc["motor"];
+        float v = doc["velocidade"];
+
+        if (m == 1) motor1.setSpeed(v);
+        else if (m == 2) motor2.setSpeed(v);
+        else {
+            request->send(400, "text/plain", "Motor inválido (use 1 ou 2)");
+            return;
+        }
+
+        request->send(200, "text/plain", "Velocidade ajustada");
+    });
+
+    // =====================================================
+    // POST /led  → ajustar brilho da LED
+    // JSON:
+    //   { "brilho": 180 }
+    // =====================================================
+    server.on("/led", HTTP_POST,
+        [](AsyncWebServerRequest *request) {}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t) {
+
+        JsonDocument doc;
+
+        if (deserializeJson(doc, data, len)) {
+            request->send(400, "text/plain", "JSON inválido");
+            return;
+        }
+
+        if (!doc["brilho"].is<int>()) {
+            request->send(400, "text/plain", "JSON deve conter 'brilho'");
+            return;
+        }
+
+        brilhoLed = doc["brilho"];
+        aplicarBrilhoLed();
+
+        request->send(200, "text/plain", "Brilho atualizado");
+    });
+
+    // =====================================================
+    // GET /sensors  → retorna apenas sensores
+    // =====================================================
+    server.on("/sensors", HTTP_GET, [](AsyncWebServerRequest *request) {
+
+        JsonDocument doc;
+        doc["pronto"]     = sensoresProntos;
+        doc["distancia1"] = distancia1;
+        doc["distancia2"] = distancia2;
+
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+
+    // =====================================================
     // Inicia servidor
     // =====================================================
     server.begin();
-    Serial.println("✅ Servidor API iniciado!");
+    Serial.println("✅ Servidor API COMPLETO iniciado!");
 }
