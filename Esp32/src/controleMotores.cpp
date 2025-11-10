@@ -22,7 +22,7 @@ void setupMotors() {
 // Calcula a velocidade final dos motores
 void atualizarVelocidades() {
     motor1.setSpeed(velocidadeBase * ajusteMotor1 * direcao);
-    motor2.setSpeed(velocidadeBase * ajusteMotor2 * direcao);
+    motor2.setSpeed(velocidadeBase * ajusteMotor2 * direcao*-1);
 }
 // Roda os motores continuamente (chamada no loop)
 void runMotors() {

@@ -6,6 +6,8 @@
 
 // LED 
 #define LED_PIN 2 
+// LED WiFi
+#define LED_WIFI_PIN 4
 
 // Motor 1 (ULN2003) 
 #define M1_IN1 32 
@@ -26,3 +28,10 @@
 // VL53L0X XSHUT 
 #define XSHUT_1 19 
 #define XSHUT_2 18
+
+// ENCODERS
+#define ENC1_CLK 34
+#define ENC1_DT  35
+
+#define ENC2_CLK 36
+#define ENC2_DT  39

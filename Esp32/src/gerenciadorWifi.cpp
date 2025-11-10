@@ -1,5 +1,7 @@
 #include "gerenciadorWifi.h"
+#include "configGlobais.h"
 #include <WiFi.h>
+
 
 // Configuração do Wifi
 const char* ssid = "Vilaca";
@@ -19,8 +21,10 @@ void conectarWifi(){
         delay(500);
         Serial.print(".");
         tentativas++;
+
         if (tentativas > 50){
             Serial.println("\nFalha ao conectar. Reiniciando ESP...");
+            wifiLedDesconectado();
             ESP.restart();
         }
     }
@@ -28,6 +32,7 @@ void conectarWifi(){
     Serial.println("\n WiFi Conectado!");
     Serial.print("IP: ");
     Serial.println(WiFi.localIP());
+    wifiLedConectado();
 
 }
 
@@ -37,6 +42,7 @@ void verificarWifi() {
 
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("WiFi caiu! Tentando reconectar...");
+        wifiLedDesconectado();
         conectarWifi();
     }
 }
