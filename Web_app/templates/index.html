@@ -24,12 +24,6 @@
                 <a href="#">
                     <img class="icones-menu" src="{{ url_for('static', filename='imgs/icon-configuracoes.png')}}" alt="Home"> 
                     Configurações </br> avançadas
-                    <!-- TODO: 
-                        - definir ips de camera e esp32
-                        - ajuste de escala dos motores para sicronismo
-                        - ajuste de distancia dos sensores
-                        - limite maximo de velocidade dos motores
-                    -->
                 </a>
             </li>
         </ul>
@@ -42,20 +36,19 @@
                 <li class="lista-controles">
                     <div class="motor-control">
                         <label for="velocidade_motores">Velocidade dos Motores</label>
-                        <input type="range" id="velocidade_motores" min="0" max="800" step="10" value="300" oninput="updateValue(1)">
+                        <input type="range" id="velocidade_motores" min="0" max="800" step="10" value="300" oninput="updateValue('motor')">
                         <span id="val1">300</span>
-                        <button onclick="setSpeed(1)">Aplicar</button>
+                        <button onclick="setSpeed()">Aplicar</button>
                     </div>
                 </li>
                 <li class="lista-controles">
                     <div class="motor-control">
-                        <label for="intencidade_luzes">Intencidade Luzes</label>
-                        <input type="range" id="intencidade_luzes" min="0" max="800" step="10" value="300" oninput="updateValue(1)">
-                        <span id="val2">300</span>
-                        <button onclick="setSpeed(1)">Aplicar</button>
+                        <label for="intensidade_luzes">Intensidade Luzes</label>
+                        <input type="range" id="intensidade_luzes" min="0" max="100" step="1" value="50" oninput="updateValue('led')">
+                        <span id="val2">50%</span>
+                        <button onclick="setLedIntensity()">Aplicar</button>
                     </div>
                 </li>
-
             </ul>
         </div>
 
@@ -78,7 +71,6 @@
                         <div class="direcao">
                             <h3>Direção</h3>
                             <img class="icones-menu icones-monitoramento" src="{{ url_for('static', filename='imgs/icon-direcao.png')}}" alt="">
-
                         </div>
                         <div class="motor2">
                             <h3>Motor 2</h3>
@@ -89,36 +81,65 @@
                     </div>
                 </div>
             </li>
-            <li class="lista-controles">
-                <div class="motor-control">
-                    
-                </div>
-            </li>
         </div>
-        <div class="box linha-tempo">
-            <!-- TODO: Talvez-->
-        </div>
-
-
     </div>
 
     <script>
-        function updateValue(motor) {
-            document.getElementById("val" + motor).textContent =
-                document.getElementById("motor" + motor).value;
+        const espUrl = "{{ ESP_IP }}";  // pega do config.py
+
+        // Atualiza o valor mostrado ao mover o slider
+        function updateValue(tipo) {
+            if(tipo === 'motor') {
+                document.getElementById("val1").textContent = document.getElementById("velocidade_motores").value;
+            } else if(tipo === 'led') {
+                document.getElementById("val2").textContent = document.getElementById("intensidade_luzes").value + "%";
+            }
         }
 
-        function setSpeed(motor) {
-            const valor = document.getElementById("motor" + motor).value;
-            fetch(`/velocidade`, {
+        // Envia a velocidade do motor para o ESP
+        function setSpeed() {
+            const valor = parseFloat(document.getElementById("velocidade_motores").value);
+            fetch(`${espUrl}/motor/speed`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ motor, valor })
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({velocidade: valor})
             })
-                .then(res => res.text())
-                .then(txt => alert(txt))
-                .catch(err => alert("Erro: " + err));
+            .then(res => res.json())
+            .then(data => console.log("Velocidade aplicada:", data.velocidadeAplicada))
+            .catch(err => console.error("Erro:", err));
         }
+
+        // Envia intensidade do LED para o ESP
+        function setLedIntensity() {
+            const perc = parseInt(document.getElementById("intensidade_luzes").value);
+            
+            // Converte porcentagem (0–100) para PWM (0–255)
+            const pwm = Math.round((perc / 100) * 255);
+
+            fetch(`${espUrl}/led/set`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({ brilho: pwm })
+            })
+            .then(res => res.text())
+            .then(txt => console.log("LED aplicado:", txt))
+            .catch(err => console.error("Erro:", err));
+        }
+
+        // Atualiza monitoramento de motores e bobinas a cada 500ms
+        setInterval(() => {
+            fetch(`${espUrl}/status`)
+            .then(res => res.json())
+            .then(data => {
+                // Atualiza velocidade dos motores
+                document.querySelector(".motor1 p").textContent = "velocidade: " + data.motor1.velocidade.toFixed(1);
+                document.querySelector(".motor2 p").textContent = "velocidade: " + data.motor2.velocidade.toFixed(1);
+                // Atualiza diâmetros
+                document.querySelector(".motor1 p:nth-of-type(2)").textContent = "Diametro da bobina: " + data.sensores.dist1 + " mm";
+                document.querySelector(".motor2 p:nth-of-type(2)").textContent = "Diametro da bobina: " + data.sensores.dist2 + " mm";
+            })
+            .catch(err => console.error("Erro fetch status:", err));
+        }, 500);
     </script>
 </body>
 </html>

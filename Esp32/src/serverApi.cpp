@@ -2,171 +2,219 @@
 #include "controleMotores.h"
 #include "sensorDistancia.h"
 #include "configGlobais.h"
+
 #include <ArduinoJson.h>
 
 AsyncWebServer server(80);
 
 void setupApiEndpoints() {
 
-    // =====================================================
-    // GET /status   → retorna TUDO do sistema (completo)
-    // =====================================================
+    // =====================================================================
+    // GET /status
+    // =====================================================================
     server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
         JsonDocument doc;
 
-        // ==== Motor 1 ====
         doc["motor1"]["velocidade"] = motor1.speed();
-        doc["motor1"]["ajuste"]     = ajusteMotor1;
-
-        // ==== Motor 2 ====
         doc["motor2"]["velocidade"] = motor2.speed();
-        doc["motor2"]["ajuste"]     = ajusteMotor2;
 
-        // ==== Controle geral ====
         doc["controle"]["velocidadeBase"]  = velocidadeBase;
-        doc["controle"]["direcao"]         = direcao;
+        doc["controle"]["direcao"] = direcao;
         doc["controle"]["limiteVelocidade"] = limiteVelocidade;
 
-        // ==== Sensores ====
-        doc["sensores"]["pronto"]     = sensoresProntos;
-        doc["sensores"]["distancia1"] = distancia1;
-        doc["sensores"]["distancia2"] = distancia2;
+        doc["sensores"]["pronto"] = sensoresProntos;
+        doc["sensores"]["dist1"]  = distancia1;
+        doc["sensores"]["dist2"]  = distancia2;
 
-        // ==== LED ====
-        doc["luzes"]["brilho"] = brilhoLed;
+        doc["diameter"]["mm"] = currentDiameterMM;
 
-        // ---- Envio do JSON ----
-        String json;
-        serializeJson(doc, json);
-        request->send(200, "application/json", json);
+        doc["autospeed"]["enabled"] = autoSpeedEnabled;
+        doc["autospeed"]["targetMMs"] = targetLinearSpeedMMs;
+
+        String out;
+        serializeJson(doc, out);
+        request->send(200, "application/json", out);
     });
 
-    // =====================================================
-    // POST /config   → atualiza qualquer parâmetro global
-    //
-    // Exemplo JSON:
-    // {
-    //   "velocidadeBase": 500,
-    //   "direcao": -1,
-    //   "limiteVelocidade": 1200
-    // }
-    // =====================================================
-    server.on("/config", HTTP_POST, 
-        [](AsyncWebServerRequest *request) {}, NULL,
-        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t) {
+    // =====================================================================
+    // POST /motor/speed   { "velocidade": 300 }
+    // =====================================================================
+    server.on("/motor/speed", HTTP_POST,
+        [](AsyncWebServerRequest *request) {},
+        NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t){
+
+            JsonDocument doc;
+            if (deserializeJson(doc, data, len)) {
+                request->send(400, "application/json", "{\"erro\":\"JSON inválido\"}");
+                return;
+            }
+
+            if (!doc["velocidade"].is<float>()) {
+                request->send(400, "application/json", "{\"erro\":\"Campo 'velocidade' é obrigatório\"}");
+                return;
+            }
+
+            float vel = doc["velocidade"].as<float>();
+
+            // Atualiza a velocidade base e desliga AutoSpeed manual
+            velocidadeBase = vel;
+            autoSpeedEnabled = false;
+
+            // Chama função que ajusta os motores com base nas distâncias atuais
+            ajustarVelocidadePorSensor(distancia1, distancia2);
+
+            // Resposta JSON
+            JsonDocument resp;
+            resp["status"] = "ok";
+            resp["velocidadeAplicada"] = vel;
+
+            String out;
+            serializeJson(resp, out);
+            request->send(200, "application/json", out);
+    });
+
+    // =====================================================================
+    // POST /motor/start   (sem body)
+    // =====================================================================
+    server.on("/motor/start", HTTP_POST, [](AsyncWebServerRequest *request){
+
+        autoSpeedEnabled = false;
+
+        motor1Start(velocidadeBase * direcao);
+        motor2Start(velocidadeBase * direcao);
+
+        request->send(200, "text/plain", "Motores ligados");
+    });
+
+    // =====================================================================
+    // POST /motor/stop
+    // =====================================================================
+    server.on("/motor/stop", HTTP_POST, [](AsyncWebServerRequest *request){
+
+        autoSpeedEnabled = false;
+        stopMotores();
+
+        request->send(200, "text/plain", "Motores parados");
+    });
+
+    // =====================================================================
+    // POST /autospeed/on   { "velocidade": 200 }
+    // =====================================================================
+    server.on("/autospeed/on", HTTP_POST,
+        [](AsyncWebServerRequest *request){}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t){
 
         JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
-            request->send(400, "text/plain", "JSON inválido");
+            request->send(400, "application/json", "{\"erro\":\"JSON inválido\"}");
             return;
         }
 
-        bool alterou = false;
-
-        if (doc["velocidadeBase"].is<float>()) {
-            velocidadeBase = doc["velocidadeBase"];
-            alterou = true;
+        if (!doc["velocidade"].is<float>()) {
+            request->send(400, "application/json", "{\"erro\":\"Enviar { 'velocidade': <mm/s> }\"}");
+            return;
         }
 
-        if (doc["direcao"].is<int>()) {
-            int d = doc["direcao"];
-            direcao = (d >= 0 ? 1 : -1);
-            alterou = true;
+        targetLinearSpeedMMs = doc["velocidade"];
+        autoSpeedEnabled = true;
+
+        request->send(200, "text/plain", "AutoSpeed ativado");
+    });
+
+    // =====================================================================
+    // POST /autospeed/off
+    // =====================================================================
+    server.on("/autospeed/off", HTTP_POST, [](AsyncWebServerRequest *request){
+        autoSpeedEnabled = false;
+        request->send(200, "text/plain", "AutoSpeed desativado");
+    });
+    // =====================================================================
+    // POST /motor/direction    { "direcao": 1 } ou { "direcao": -1 }
+    // =====================================================================
+    server.on("/motor/direction", HTTP_POST,
+        [](AsyncWebServerRequest *request){}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t){
+
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len)) {
+            request->send(400, "application/json", "{\"erro\":\"JSON inválido\"}");
+            return;
         }
 
-        if (doc["limiteVelocidade"].is<float>()) {
-            limiteVelocidade = doc["limiteVelocidade"];
-            motor1.setMaxSpeed(limiteVelocidade);
-            motor2.setMaxSpeed(limiteVelocidade);
-            alterou = true;
+        if (!doc["direcao"].is<int>()) {
+            request->send(400, "application/json", "{\"erro\":\"Direcao deve ser 1 ou -1\"}");
+            return;
         }
 
-        if (alterou) {
-            atualizarVelocidades();
-            request->send(200, "text/plain", "Configurações atualizadas");
+        int d = doc["direcao"].as<int>();
+        if (d >= 0) direcao = 1;
+        else        direcao = -1;
+
+        atualizarVelocidades();  // aplica nova direção na hora
+
+        JsonDocument resp;
+        resp["status"] = "ok";
+        resp["direcao"] = direcao;
+
+        String out;
+        serializeJson(resp, out);
+        request->send(200, "application/json", out);
+    });
+    // =====================================================================
+    // POST /led/set    { "brilho": 128 }  -> 0 a 255
+    // =====================================================================
+    server.on("/led/set", HTTP_POST,
+        [](AsyncWebServerRequest *request){}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t){
+
+            JsonDocument doc;
+            if (deserializeJson(doc, data, len)) {
+                request->send(400, "application/json", "{\"erro\":\"JSON inválido\"}");
+                return;
+            }
+
+            if (!doc["brilho"].is<int>()) {
+                request->send(400, "application/json", "{\"erro\":\"Enviar { 'brilho': <0-255> }\"}");
+                return;
+            }
+
+            int b = doc["brilho"].as<int>();
+            if (b < 0) b = 0;
+            if (b > 255) b = 255;
+
+            brilhoLed = (float)b;
+            aplicarBrilhoLed();  // atualiza o PWM do LED
+
+            // Resposta JSON
+            JsonDocument resp;
+            resp["status"] = "ok";
+            resp["brilhoAtual"] = brilhoLed;
+
+            String out;
+            serializeJson(resp, out);
+            request->send(200, "application/json", out);
+        });
+
+    // =====================================================================
+    // HABILITAR CORS GLOBAL
+    // =====================================================================
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+
+    // Necessário para que o navegador não bloqueie requisições POST com JSON
+    server.onNotFound([](AsyncWebServerRequest *request) {
+        if (request->method() == HTTP_OPTIONS) {
+            request->send(200);
         } else {
-            request->send(400, "text/plain", "Nenhum campo válido enviado");
+            request->send(404);
         }
     });
-
-    // =====================================================
-    // POST /motor  → alterar velocidade individual
-    // JSON:
-    //   { "motor": 1, "velocidade": 300 }
-    // =====================================================
-    server.on("/motor", HTTP_POST, 
-        [](AsyncWebServerRequest *request) {}, NULL,
-        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t) {
-
-        JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-            request->send(400, "text/plain", "JSON inválido");
-            return;
-        }
-
-        if (!doc["motor"].is<int>() || !doc["velocidade"].is<float>()) {
-            request->send(400, "text/plain", "JSON deve conter motor (1/2) e velocidade");
-            return;
-        }
-
-        int m = doc["motor"];
-        float v = doc["velocidade"];
-
-        if (m == 1) motor1.setSpeed(v);
-        else if (m == 2) motor2.setSpeed(v);
-        else {
-            request->send(400, "text/plain", "Motor inválido (use 1 ou 2)");
-            return;
-        }
-
-        request->send(200, "text/plain", "Velocidade ajustada");
-    });
-
-    // =====================================================
-    // POST /led  → ajustar brilho da LED
-    // JSON:
-    //   { "brilho": 180 }
-    // =====================================================
-    server.on("/led", HTTP_POST,
-        [](AsyncWebServerRequest *request) {}, NULL,
-        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t) {
-
-        JsonDocument doc;
-
-        if (deserializeJson(doc, data, len)) {
-            request->send(400, "text/plain", "JSON inválido");
-            return;
-        }
-
-        if (!doc["brilho"].is<int>()) {
-            request->send(400, "text/plain", "JSON deve conter 'brilho'");
-            return;
-        }
-
-        brilhoLed = doc["brilho"];
-        aplicarBrilhoLed();
-
-        request->send(200, "text/plain", "Brilho atualizado");
-    });
-
-    // =====================================================
-    // GET /sensors  → retorna apenas sensores
-    // =====================================================
-    server.on("/sensors", HTTP_GET, [](AsyncWebServerRequest *request) {
-
-        JsonDocument doc;
-        doc["pronto"]     = sensoresProntos;
-        doc["distancia1"] = distancia1;
-        doc["distancia2"] = distancia2;
-
-        String json;
-        serializeJson(doc, json);
-        request->send(200, "application/json", json);
-    });
-
-    // =====================================================
+    
+    // =====================================================================
     // Inicia servidor
-    // =====================================================
+    // =====================================================================
     server.begin();
-    Serial.println("✅ Servidor API COMPLETO iniciado!");
+    Serial.println("🔥 API organizada iniciada!");
 }

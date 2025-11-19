@@ -4,73 +4,121 @@ import numpy as np
 from config import ESP32_CAM_URL
 
 def get_camera():
-    """Abre a conexão com a câmera (ESP32-CAM)."""
+    """Abre a conexão com a câmera ESP32-CAM."""
     return cv2.VideoCapture(ESP32_CAM_URL)
 
+# Criador de trackers MOSSE (compatível com OpenCV normal e legacy)
+def create_tracker():
+    try:
+        return cv2.legacy.TrackerMOSSE_create()
+    except:
+        return cv2.TrackerMOSSE_create()
+
 def generate_frames():
-    """Captura frames da câmera e aplica visão computacional:
-       - Detecção de movimento
-       - Detecção de cor vermelha
-    """
+    """Gera frames com detecção de anomalias (riscos/manchas) e envia ao navegador."""
     camera = get_camera()
 
-    # Captura dois frames iniciais para detectar movimento
-    ret, frame1 = camera.read()
-    ret, frame2 = camera.read()
+    # === Captura do primeiro frame para referência ===
+    ret, prev_frame = camera.read()
+    while not ret or prev_frame is None:
+        print("⚠️ Falha inicial na câmera. Reconectando...")
+        camera.release()
+        camera = get_camera()
+        ret, prev_frame = camera.read()
+
+    prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+    prev_gray = cv2.GaussianBlur(prev_gray, (7, 7), 0)
+
+    trackers = []
 
     while True:
-        if not ret:
-            break
+        ret, frame = camera.read()
 
-        # --- [1] DETECÇÃO DE MOVIMENTO ---
-        diff = cv2.absdiff(frame1, frame2)
-        gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
-        blur = cv2.GaussianBlur(gray, (5, 5), 0)
-        _, thresh = cv2.threshold(blur, 20, 255, cv2.THRESH_BINARY)
-        dilated = cv2.dilate(thresh, None, iterations=3)
-        contours, _ = cv2.findContours(dilated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        # === Reconexão automática se o stream cair ===
+        if not ret or frame is None:
+            print("⚠️ Falha na leitura da câmera. Tentando reconectar...")
+            camera.release()
+            camera = get_camera()
+            continue
 
-        movimento_detectado = False
+        # ===============================
+        # PROCESSAMENTO DO FRAME
+        # ===============================
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.GaussianBlur(gray, (7, 7), 0)
+
+        # -------------------------------
+        # [1] DETECÇÃO DE ANOMALIAS
+        # -------------------------------
+        diff = cv2.absdiff(prev_gray, gray)
+        blur = cv2.GaussianBlur(diff, (5, 5), 0)
+        _, thresh = cv2.threshold(blur, 25, 255, cv2.THRESH_BINARY)
+
+        # limpar ruído mas manter contorno fiel
+        thresh = cv2.erode(thresh, None, iterations=1)
+        thresh = cv2.dilate(thresh, None, iterations=1)
+
+        contours, _ = cv2.findContours(
+            thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        new_boxes = []
         for c in contours:
-            if cv2.contourArea(c) < 1000:
+            area = cv2.contourArea(c)
+            if area < 20:  # detectar riscos/manchas pequenas
                 continue
-            movimento_detectado = True
+
             x, y, w, h = cv2.boundingRect(c)
-            cv2.rectangle(frame1, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-        if movimento_detectado:
-            cv2.putText(frame1, "Movimento detectado", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            # Encolher box para ficar justo
+            pad = 2
+            x = max(0, x + pad)
+            y = max(0, y + pad)
+            w = max(1, w - 2 * pad)
+            h = max(1, h - 2 * pad)
 
-        # --- [2] DETECÇÃO DE COR VERMELHA ---
-        hsv = cv2.cvtColor(frame1, cv2.COLOR_BGR2HSV)
+            # MOSSE precisa de janela mínima
+            MIN_SIZE = 10
+            if w < MIN_SIZE: w = MIN_SIZE
+            if h < MIN_SIZE: h = MIN_SIZE
 
-        # Intervalo de vermelho (em HSV)
-        lower_red1 = np.array([0, 120, 70])
-        upper_red1 = np.array([10, 255, 255])
-        mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+            new_boxes.append((x, y, w, h))
 
-        lower_red2 = np.array([170, 120, 70])
-        upper_red2 = np.array([180, 255, 255])
-        mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+        # Criar trackers para novas manchas
+        for (x, y, w, h) in new_boxes:
+            tracker = create_tracker()
+            try:
+                tracker.init(frame, (x, y, w, h))
+                trackers.append(tracker)
+            except:
+                print("⚠️ Tracker ignorado: bounding box muito pequeno")
 
-        mask = mask1 + mask2
+        # -------------------------------
+        # [2] ATUALIZAR TRACKERS EXISTENTES
+        # -------------------------------
+        updated_trackers = []
+        for trk in trackers:
+            ok, box = trk.update(frame)
+            if ok:
+                updated_trackers.append(trk)
+                (x, y, w, h) = [int(v) for v in box]
 
-        # Achar contornos de regiões vermelhas
-        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        for c in contours:
-            if cv2.contourArea(c) > 500:
-                x, y, w, h = cv2.boundingRect(c)
-                cv2.rectangle(frame1, (x, y), (x + w, y + h), (0, 0, 255), 2)
-                cv2.putText(frame1, "Vermelho detectado", (x, y - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
+                cv2.putText(frame, "Anomalia", (x, y - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
 
-        # --- [3] ENVIAR FRAME AO NAVEGADOR ---
-        _, buffer = cv2.imencode('.jpg', frame1)
-        frame = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        trackers = updated_trackers
 
-        # Atualiza frames para o próximo loop
-        frame1 = frame2
-        ret, frame2 = camera.read()
+        # -------------------------------
+        # [3] ENVIAR FRAME PARA O NAVEGADOR
+        # -------------------------------
+        _, buffer = cv2.imencode('.jpg', frame)
+        frame_jpg = buffer.tobytes()
+
+        yield (
+            b'--frame\r\n'
+            b'Content-Type: image/jpeg\r\n\r\n' + frame_jpg + b'\r\n'
+        )
+
+        # atualizar frame anterior para a próxima detecção
+        prev_gray = gray

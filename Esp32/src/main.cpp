@@ -43,12 +43,12 @@ void loop() {
     if (agora - ultimoTempo > 100) {
         ultimoTempo = agora;
 
-        Serial.printf(
-            "VelocidadeBase: %.1f | Direcao: %d | Enc1: %ld | Vel1: %.2f | Enc2: %ld | Vel2: %.2f\n",
-            velocidadeBase, direcao,
-            encoder1_ticks, encoder1_velocidade,
-            encoder2_ticks, encoder2_velocidade
-        );
+        // Serial.printf(
+        //     "VelocidadeBase: %.1f | Direcao: %d | Enc1: %ld | Vel1: %.2f | Enc2: %ld | Vel2: %.2f\n",
+        //     velocidadeBase, direcao,
+        //     encoder1_ticks, encoder1_velocidade,
+        //     encoder2_ticks, encoder2_velocidade
+        // );
     }
 
     // Leitura dos sensores de distância
@@ -57,9 +57,6 @@ void loop() {
 
         atualizarDistancias();
         // Você pode exibir se quiser:
-        // Serial.printf("D1=%d | D2=%d\n", distancia1, distancia2);
+        Serial.printf("D1=%d | D2=%d\n", distancia1, distancia2);
     }
-
-    // ❗ REMOVIDO: delay(200) (isso travava os motores)
-    // ❗ REMOVIDO: prints contínuos dos pinos dos encoders
 }

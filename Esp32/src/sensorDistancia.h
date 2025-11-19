@@ -1,16 +1,16 @@
 #pragma once
 #include <Arduino.h>
-#include <Wire.h>
-#include <Adafruit_VL53L0X.h>
 
-void iniciarSensores();  
-void processarInicializacaoSensores(); // NOVO ✅
-
+void iniciarSensores();
+void processarInicializacaoSensores();
 void atualizarDistancias();
 uint16_t lerDistancia1();
 uint16_t lerDistancia2();
 
 extern uint16_t distancia1;
 extern uint16_t distancia2;
+extern bool sensoresProntos;
 
-extern bool sensoresProntos; // ✅ para saber quando pode usar
+// Saída filtrada / diâmetro (agora só distâncias filtradas)
+extern float distancia1Filtrada;
+extern float distancia2Filtrada;

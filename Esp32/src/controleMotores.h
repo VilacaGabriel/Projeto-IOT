@@ -1,27 +1,29 @@
 #pragma once
 #include <AccelStepper.h>
 
-// VARIÁVEIS GLOBAIS DOS MOTORES
-// Objetos dos motores (definidos no .cpp)
+// Motores
 extern AccelStepper motor1;
 extern AccelStepper motor2;
 
-// Estados e variáveis de controle
+// Variáveis de controle
 extern float limiteVelocidade;
 extern float ajusteMotor1;
 extern float ajusteMotor2;
-extern float velocidadeBase;
+extern float velocidadeBase; 
 extern int direcao;
+extern const float STEPS_PER_REV;
 
-// FUNÇÕES
-// Inicializa os motores (máx velocidade, ajustes iniciais)
+// Configuração inicial
 void setupMotors();
-
-// Atualiza a velocidade real dos motores com base nas variáveis globais
 void atualizarVelocidades();
-
-// Roda os motores continuamente (chamado no loop)
 void runMotors();
-
-// Para ambos os motores (opcional)
 void pararMotores();
+void motor1Start(float steps_per_sec);
+void motor2Start(float steps_per_sec);
+void motor1Stop();
+void motor2Stop();
+void startMotoresAutomaticamente();
+void stopMotores();
+
+// Ajuste automático com base na distância dos sensores
+void ajustarVelocidadePorSensor(float dist1_mm, float dist2_mm);
