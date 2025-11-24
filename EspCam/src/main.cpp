@@ -29,8 +29,8 @@
 // ==========================================
 // WiFi
 // ==========================================
-const char *ssid = "Vilaca";
-const char *password = "13g11a96";
+const char *ssid = "Esp32";
+const char *password = "0123456789";
 
 httpd_handle_t camera_httpd = NULL;
 httpd_handle_t stream_httpd = NULL;

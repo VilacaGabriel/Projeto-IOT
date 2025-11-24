@@ -15,8 +15,8 @@
                 </a>
             </li>
             <li class="lista-menu">
-                <a href="#">
-                 <img class="icones-menu" src="{{ url_for('static', filename='imgs/icon-registros.png')}}" alt="Home"> 
+                <a href="{{ url_for('registro') }}">
+                    <img class="icones-menu" src="{{ url_for('static', filename='imgs/icon-registros.png')}}" alt="Registros"> 
                     Registros
                 </a>
             </li>
@@ -36,8 +36,8 @@
                 <li class="lista-controles">
                     <div class="motor-control">
                         <label for="velocidade_motores">Velocidade dos Motores</label>
-                        <input type="range" id="velocidade_motores" min="0" max="800" step="10" value="300" oninput="updateValue('motor')">
-                        <span id="val1">300</span>
+                        <input type="range" id="velocidade_motores" min="0" max="1000" step="10" value="0" oninput="updateValue('motor')">
+                        <span id="val1">000</span>
                         <button onclick="setSpeed()">Aplicar</button>
                     </div>
                 </li>

@@ -56,18 +56,14 @@ void setupApiEndpoints() {
             }
 
             float vel = doc["velocidade"].as<float>();
-
-            // Atualiza a velocidade base e desliga AutoSpeed manual
-            velocidadeBase = vel;
+            velocidadeBase = vel;    // Apenas seta a velocidade base
             autoSpeedEnabled = false;
 
-            // Chama função que ajusta os motores com base nas distâncias atuais
-            ajustarVelocidadePorSensor(distancia1, distancia2);
+            // NÃO chama ajustarVelocidadePorSensor()
 
-            // Resposta JSON
             JsonDocument resp;
             resp["status"] = "ok";
-            resp["velocidadeAplicada"] = vel;
+            resp["velocidadeBase"] = vel;
 
             String out;
             serializeJson(resp, out);

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Registros de Anomalias</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <style>
+        .thumb {
+            width: 140px;
+            height: 140px;
+            object-fit: cover;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+        .item-galeria {
+            text-align: center;
+            margin: 10px;
+            display: inline-block;
+        }
+        .btn {
+            background: #5050ff;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: white;
+            margin-top: 5px;
+        }
+        .popup {
+            display: none;
+            position: fixed;
+            left: 0; top: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(3px);
+            justify-content: center;
+            align-items: center;
+        }
+        .popup-box {
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 12px;
+            width: 350px;
+        }
+        select, input {
+            width: 100%;
+            padding: 8px;
+            margin-top: 10px;
+            border-radius: 8px;
+            background: #2b2b2b;
+            color: white;
+            border: 1px solid #555;
+        }
+    </style>
+</head>
+
+<body>
+
+<nav class="menu">
+    <ul>
+        <li class="lista-menu"><a href="/"><img class="icones-menu" src="{{ url_for('static', filename='imgs/icon-home.png') }}">Home</a></li>
+        <li class="lista-menu ativo"><a href="{{ url_for('registro') }}"><img class="icones-menu" src="{{ url_for('static', filename='imgs/icon-registros.png') }}">Registros</a></li>
+        <li class="lista-menu"><a href="#"><img class="icones-menu" src="{{ url_for('static', filename='imgs/icon-configuracoes.png') }}">Configurações<br>avançadas</a></li>
+    </ul>
+</nav>
+
+<div class="container-principal">
+    <div class="box">
+
+        <h1>Anomalias Detectadas (não classificadas)</h1>
+
+        <div class="galeria">
+            {% for img in nao_classificados %}
+            <div class="item-galeria">
+                <img src="{{ url_for('static', filename='anomalias/nao_classificado/' ~ img) }}" class="thumb" onclick="abrirPopup('{{ img }}', '')">
+                <p>{{ img }}</p>
+                <button class="btn" onclick="abrirPopup('{{ img }}', '')">Classificar</button>
+            </div>
+            {% endfor %}
+        </div>
+
+        <hr><br>
+
+        <h1>Falhas Agrupadas</h1>
+
+        {% for grupo, lista in imagens.items() %}
+            <div class="grupo-capa" onclick="expandir('{{ grupo }}')">
+                <h2>Categoria: {{ grupo }}</h2>
+
+                {% if lista|length > 0 %}
+                <img src="{{ url_for('static', filename='anomalias/classificados/' ~ grupo ~ '/' ~ lista[0]) }}"
+                     class="grupo-thumb">
+                {% else %}
+                <p>Nenhuma imagem neste grupo.</p>
+                {% endif %}
+            </div>
+
+            <div id="expansao-{{ grupo }}" class="expansao">
+                <div class="galeria">
+                    {% for img in lista %}
+                    <div class="item-galeria">
+                        <!-- CLICAR NA IMAGEM TAMBÉM EDITA O GRUPO -->
+                        <img src="{{ url_for('static', filename='anomalias/classificados/' ~ grupo ~ '/' ~ img) }}"
+                             class="thumb"
+                             onclick="abrirPopup('{{ img }}', '{{ grupo }}')">
+
+                        <p>{{ img }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endfor %}
+
+    </div>
+</div>
+
+<!-- POPUP PARA CLASSIFICAR / EDITAR -->
+<div class="popup" id="popup">
+    <div class="popup-box">
+        <h3 id="popup-titulo">Classificar imagem</h3>
+
+        <p id="popup-nome"></p>
+        <p id="popup-grupo-atual" style="color:#ccc;"></p>
+
+        <label>Escolher grupo existente:</label>
+        <select id="grupo-existente">
+            <option value="">Nenhum</option>
+            {% for grupo in imagens.keys() %}
+            <option value="{{ grupo }}">{{ grupo }}</option>
+            {% endfor %}
+        </select>
+
+        <label>Criar novo grupo:</label>
+        <input type="text" id="novo-grupo" placeholder="Digite o nome">
+
+        <button class="btn" onclick="confirmarClassificacao()">Salvar</button>
+        <button class="btn" style="background:#777" onclick="fecharPopup()">Cancelar</button>
+        <button class="btn" style="background:#a00000" onclick="excluirImagem()">Excluir</button>
+    </div>
+</div>
+
+<script>
+let imgSelecionada = "";
+let grupoAtual = "";
+
+function abrirPopup(img, grupo) {
+    imgSelecionada = img;
+    grupoAtual = grupo;
+
+    document.getElementById("popup").style.display = "flex";
+
+    document.getElementById("popup-nome").innerText = "Imagem: " + img;
+
+    if (grupo) {
+        document.getElementById("popup-titulo").innerText = "Alterar Grupo";
+        document.getElementById("popup-grupo-atual").innerText = "Grupo atual: " + grupo;
+        document.getElementById("grupo-existente").value = grupo; // pré-seleciona
+    } else {
+        document.getElementById("popup-titulo").innerText = "Classificar imagem";
+        document.getElementById("popup-grupo-atual").innerText = "";
+        document.getElementById("grupo-existente").value = "";
+    }
+}
+
+function fecharPopup() {
+    document.getElementById("popup").style.display = "none";
+}
+
+function confirmarClassificacao() {
+    const grupoExistente = document.getElementById("grupo-existente").value;
+    const novoGrupo = document.getElementById("novo-grupo").value;
+
+    let grupoFinal = grupoExistente || novoGrupo;
+
+    if (!grupoFinal) {
+        alert("Escolha ou crie um grupo!");
+        return;
+    }
+
+    fetch("/classificar_manual", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            imagem: imgSelecionada,
+            grupo: grupoFinal,
+            grupo_atual: grupoAtual
+        })
+    })
+    .then(res => res.json())
+    .then(data => location.reload());
+}
+</script>
+
+<script>
+function expandir(grupo) {
+    // fecha todos os outros grupos
+    const todos = document.querySelectorAll(".expansao");
+    todos.forEach(div => {
+        if (div.id !== "expansao-" + grupo) {
+            div.style.display = "none";
+        }
+    });
+
+    // abre/fecha o clicado
+    const atual = document.getElementById("expansao-" + grupo);
+    atual.style.display = (atual.style.display === "block" ? "none" : "block");
+}
+</script>
+
+<script>
+function excluirImagem() {
+    if (!confirm("Tem certeza que deseja excluir esta imagem?")) {
+        return;
+    }
+
+    fetch("/excluir_imagem", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            imagem: imgSelecionada,
+            grupo_atual: grupoAtual   // se vazio, é não_classificado
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === "ok") {
+            location.reload();
+        } else {
+            alert("Erro ao excluir: " + data.erro);
+        }
+    });
+}
+</script>
+
+</body>
+</html>

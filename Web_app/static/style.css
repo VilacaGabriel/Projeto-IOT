@@ -183,3 +183,29 @@ button:hover {
     background: #00d1ff;
     border-radius: 50%;
 }
+
+
+
+.galeria {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.item-galeria {
+    width: 180px;
+    text-align: center;
+}
+
+.thumb {
+    width: 100%;
+    height: auto;
+    border-radius: 6px;
+    border: 2px solid #444;
+    transition: 0.2s;
+}
+
+.thumb:hover {
+    transform: scale(1.05);
+    border-color: #00bfff;
+}

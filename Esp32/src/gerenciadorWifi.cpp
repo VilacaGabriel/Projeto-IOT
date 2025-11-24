@@ -4,8 +4,8 @@
 
 
 // Configuração do Wifi
-const char* ssid = "Vilaca";
-const char* senha = "13g11a96";
+const char* ssid = "Esp32";
+const char* senha = "0123456789";
 
 // tempo para tentar reconecxão
 unsigned long ultimoCheck = 0;

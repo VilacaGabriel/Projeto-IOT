@@ -1,4 +1,5 @@
 #include "controleMotores.h"
+#include "encoder.h"
 #include "pinos.h"
 #include <Arduino.h>
 #include <math.h>
@@ -64,36 +65,70 @@ void stopMotores() {
     motor1Stop();
     motor2Stop();
 }
+float limiteCrescimentoDiametro = 10.0f;  
 
-// --- Ajuste automático por sensor ---
-// dist1_mm = distância sensor 1
-// dist2_mm = distância sensor 2
-float ajustePercentual = 1.0f; // 1.0 = 100%, 0.8 = 80%, 1.2 = 120%
+void ajustarVelocidadePorSensor(float d1, float d2) {
+    static bool primeiraVez = true;
 
-void ajustarVelocidadePorSensor(float dist1_mm, float dist2_mm) {
-    const float RAIO_PADRAO = 120.0f;
+    if (primeiraVez) {
+        encoder1_inicioVolta = encoder1_ticks;
+        encoder2_inicioVolta = encoder2_ticks;
 
-    if (dist1_mm <= 0) dist1_mm = RAIO_PADRAO;
-    if (dist2_mm <= 0) dist2_mm = RAIO_PADRAO;
+        diametro1_inicioVolta = d1;
+        diametro2_inicioVolta = d2;
 
-    float d1 = dist1_mm; // diâmetro bobina desenrolando
-    float d2 = dist2_mm; // diâmetro bobina enrolando
+        primeiraVez = false;
+    }
 
-    // Velocidade do motor 1 (desenrola)
-    float steps2 = (velocidadeBase / (M_PI * d1)) * STEPS_PER_REV;
+    float d_min = min(d1, d2);
+    float velMax = (velocidadeBase / 1000.0f) * limiteVelocidade;
 
-    // Velocidade do motor 2 (enrola), proporcional ao diâmetro
-    float steps1 = steps2 * d1 / d2;
-    
-    // Limita ao máximo
-    if (steps1 > limiteVelocidade) steps1 = limiteVelocidade;
-    if (steps2 > limiteVelocidade) steps2 = limiteVelocidade;
+    float target_m1 = velMax * (d_min / d2);  
+    float target_m2 = velMax * (d_min / d1);  
 
-    // Seta velocidades nos motores
-    motor1Start(steps1);      // desenrola
-    motor2Start(steps2 -=.3);      // enrola (com ajuste fixo de 30%)
-    
-    Serial.printf("AJUSTE: D1=%.1f mm D2=%.1f mm | vel1=%.2f vel2=%.2f\n",
-                  d1, d2, steps1, steps2);
+    // =====================================================
+    //   CORREÇÃO POR VARIAÇÃO DO DIÂMETRO A CADA VOLTA
+    // =====================================================
+
+    // ---------------- Motor 1 ------------------
+    if (completouVolta1()) {
+
+        float delta = d1 - diametro1_inicioVolta;
+
+        if (delta > limiteCrescimentoDiametro) {
+            target_m1 -= 200;  // diminui velocidade
+        } 
+        else if (delta < -limiteCrescimentoDiametro) {
+            target_m1 += 200;  // aumenta velocidade
+        }
+
+        encoder1_inicioVolta = encoder1_ticks;
+        diametro1_inicioVolta = d1;
+    }
+
+    // ---------------- Motor 2 ------------------
+    if (completouVolta2()) {
+
+        float delta = d2 - diametro2_inicioVolta;
+
+        if (delta > limiteCrescimentoDiametro) {
+            target_m2 -= 200;
+        } 
+        else if (delta < -limiteCrescimentoDiametro) {
+            target_m2 += 200;
+        }
+
+        encoder2_inicioVolta = encoder2_ticks;
+        diametro2_inicioVolta = d2;
+    }
+
+    // Limitar
+    target_m1 = constrain(target_m1, 0, limiteVelocidade);
+    target_m2 = constrain(target_m2, 0, limiteVelocidade);
+
+    motor1Start(target_m1);
+    motor2Start(target_m2);
+
+    Serial.printf("[VOLTA] d1=%.1f d2=%.1f | Δ=%0.1f | M1=%.1f M2=%.1f\n",
+                  d1, d2, limiteCrescimentoDiametro, target_m1, target_m2);
 }
-
